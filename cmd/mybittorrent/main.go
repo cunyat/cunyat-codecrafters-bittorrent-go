@@ -20,26 +20,25 @@ func decodeBencodeValue(str string) (interface{}, string, error) {
 			return nil, "", err
 		}
 
-		return value, str[end:], nil
+		return value, str[end+1:], nil
 	}
 
 	if strings.HasPrefix(str, "l") {
-		var items []interface{}
+		var items = []interface{}{}
 		var value interface{}
 		var err error
 		var rest = str[1:]
 
-		for {
+		for !strings.HasPrefix(rest, "e") {
 			value, rest, err = decodeBencodeValue(rest)
 			if err != nil {
 				return nil, "", err
 			}
 
 			items = append(items, value)
-			if strings.HasPrefix(rest, "e") {
-				return items, rest[1:], nil
-			}
 		}
+
+		return items, rest[1:], nil
 	}
 
 	if unicode.IsDigit(rune(str[0])) {
