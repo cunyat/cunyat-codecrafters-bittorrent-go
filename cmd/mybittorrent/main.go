@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -113,6 +114,66 @@ func decodeBencode(buf string) (interface{}, error) {
 	return value, err
 }
 
+type TorrentInfo struct {
+	Announce string
+	Length   int
+}
+
+func ParseTorrentInfo(filename string) (TorrentInfo, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return TorrentInfo{}, err
+	}
+	defer file.Close()
+
+	value, err := io.ReadAll(file)
+	if err != nil {
+		return TorrentInfo{}, err
+	}
+
+	decoded, err := decodeBencode(string(value))
+	if err != nil {
+		return TorrentInfo{}, err
+	}
+
+	dict, ok := decoded.(map[string]interface{})
+	if !ok {
+		return TorrentInfo{}, fmt.Errorf("expected torrent file to contain a dictionary, got %T", decoded)
+	}
+
+	announce, ok := dict["announce"]
+	if !ok {
+		return TorrentInfo{}, fmt.Errorf("missing announce field in torrent file")
+	}
+
+	announceStr, ok := announce.(string)
+	if !ok {
+		return TorrentInfo{}, fmt.Errorf("announce field must be an string, got %T", announce)
+	}
+
+	info, ok := dict["info"]
+	if !ok {
+		return TorrentInfo{}, fmt.Errorf("missing info field in torrent file")
+	}
+
+	infoDict, ok := info.(map[string]interface{})
+	if !ok {
+		return TorrentInfo{}, fmt.Errorf("info field is not a dictionary")
+	}
+
+	length, ok := infoDict["length"]
+	if !ok {
+		return TorrentInfo{}, fmt.Errorf("missing length field in torrent file's info field")
+	}
+
+	lengthInt, ok := length.(int)
+	if !ok {
+		return TorrentInfo{}, fmt.Errorf("length field must be an integer, got %T", length)
+	}
+
+	return TorrentInfo{Announce: announceStr, Length: lengthInt}, nil
+}
+
 func main() {
 	command := os.Args[1]
 	if command == "decode" {
@@ -125,6 +186,14 @@ func main() {
 
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
+	} else if command == "info" {
+		filename := os.Args[2]
+		info, err := ParseTorrentInfo(filename)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Printf("Tracker URL: %s\nLength: %d\n", info.Announce, info.Length)
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
