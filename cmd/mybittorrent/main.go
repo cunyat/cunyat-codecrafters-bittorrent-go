@@ -4,9 +4,10 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
-	"github.com/jackpal/bencode-go"
 	"os"
 	"strings"
+
+	"github.com/jackpal/bencode-go"
 )
 
 type TorrentFileInfo struct {
