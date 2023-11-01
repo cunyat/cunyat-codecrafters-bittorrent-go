@@ -1,9 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -45,6 +50,69 @@ func TorrentFileHash(file TorrentFile) ([]byte, error) {
 	return s.Sum(nil), nil
 }
 
+type GetPeersResponse struct {
+	Interval    int    `bencode:"interval"`
+	MinInterval int    `bencode:"min interval"`
+	Incomplete  int    `bencode:"incomplete"`
+	Complete    int    `bencode:"complete"`
+	Peers       string `bencode:"peers"`
+}
+
+func (r GetPeersResponse) PeersAddr() []string {
+	bytePeers := []byte(r.Peers)
+	var addrs []string
+	for i := 0; i < len(bytePeers); i += 6 {
+		ip := net.IPv4(bytePeers[i], bytePeers[i+1], bytePeers[i+2], bytePeers[i+3])
+		port := int(bytePeers[i+4]) << 8
+		port |= int(bytePeers[i+5])
+		addrs = append(addrs, fmt.Sprintf("%s:%d", ip.String(), port))
+	}
+	return addrs
+}
+
+func GetPeers(t TorrentFile) (GetPeersResponse, error) {
+	trackerURL, err := url.Parse(t.Announce)
+	if err != nil {
+		return GetPeersResponse{}, fmt.Errorf("bad url for torrent announce: %w", err)
+	}
+	hash, err := TorrentFileHash(t)
+	if err != nil {
+		return GetPeersResponse{}, err
+	}
+	q := trackerURL.Query()
+	q.Add("info_hash", string(hash))
+	q.Add("peer_id", "18243745892367492361")
+	q.Add("port", "6881")
+	q.Add("uploaded", "0")
+	q.Add("downloaded", "0")
+	q.Add("left", fmt.Sprintf("%d", t.Info.Length))
+	q.Add("compact", "1")
+	trackerURL.RawQuery = q.Encode()
+
+	fmt.Println("url", trackerURL.String())
+
+	res, err := http.Get(trackerURL.String())
+	if err != nil {
+		return GetPeersResponse{}, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode >= 400 {
+		return GetPeersResponse{}, fmt.Errorf("got error response: %d %s", res.StatusCode, res.Status)
+	}
+
+	content, err := io.ReadAll(res.Body)
+	fmt.Printf("status: %d\n", res.StatusCode)
+	fmt.Printf("res: %s\n", content)
+	fmt.Printf("err: %s\n", err)
+
+	var peers GetPeersResponse
+	if err := bencode.Unmarshal(bytes.NewReader(content), &peers); err != nil {
+		return GetPeersResponse{}, fmt.Errorf("unable to parse get peers response: %w", err)
+	}
+	return peers, nil
+}
+
 func main() {
 	command := os.Args[1]
 	switch command {
@@ -78,7 +146,21 @@ func main() {
 		for i := 0; i < len(torrent.Info.Pieces); i += 20 {
 			fmt.Printf("%x\n", torrent.Info.Pieces[i:i+20])
 		}
-
+	case "peers":
+		filename := os.Args[2]
+		torrent, err := ParseTorrentFile(filename)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		peers, err := GetPeers(torrent)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		for _, peer := range peers.PeersAddr() {
+			fmt.Println(peer)
+		}
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
