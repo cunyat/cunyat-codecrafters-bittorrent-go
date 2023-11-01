@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"github.com/jackpal/bencode-go"
@@ -9,10 +10,10 @@ import (
 )
 
 type TorrentFileInfo struct {
-	Length      int
-	Name        string
-	PieceLength int `bencode:"piece length"`
-	Pieces      string
+	Length      int         `bencode:"length"`
+	Name        string      `bencode:"name"`
+	PieceLength int         `bencode:"piece length"`
+	Pieces      interface{} `bencode:"pieces"`
 }
 
 type TorrentFile struct {
@@ -35,27 +36,41 @@ func ParseTorrentFile(filename string) (TorrentFile, error) {
 	return info, nil
 }
 
+func TorrentFileHash(file TorrentFile) ([]byte, error) {
+	s := sha1.New()
+	if err := bencode.Marshal(s, file.Info); err != nil {
+		return nil, err
+	}
+	return s.Sum(nil), nil
+}
+
 func main() {
 	command := os.Args[1]
-	if command == "decode" {
+	switch command {
+	case "decode":
 		value := os.Args[2]
 		decoded, err := bencode.Decode(strings.NewReader(value))
 		if err != nil {
 			fmt.Println(err)
-			return
+			os.Exit(1)
 		}
-
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
-	} else if command == "info" {
+	case "info":
 		filename := os.Args[2]
 		torrent, err := ParseTorrentFile(filename)
 		if err != nil {
 			fmt.Println(err)
-			return
+			os.Exit(1)
 		}
-		fmt.Printf("Tracker URL: %s\nLength: %d\n", torrent.Announce, torrent.Info.Length)
-	} else {
+		hash, err := TorrentFileHash(torrent)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %x\n", torrent.Announce, torrent.Info.Length, hash)
+
+	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
 	}
