@@ -113,6 +113,9 @@ func GetPeers(t TorrentFile) (GetPeersResponse, error) {
 	return peers, nil
 }
 
+type HandshakeResponse struct {
+}
+
 func main() {
 	command := os.Args[1]
 	switch command {
@@ -161,6 +164,56 @@ func main() {
 		for _, peer := range peers.PeersAddr() {
 			fmt.Println(peer)
 		}
+	case "handshake":
+		filename := os.Args[2]
+		peerAddr := os.Args[3]
+		torrent, err := ParseTorrentFile(filename)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		hash, err := TorrentFileHash(torrent)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		conn, err := net.Dial("tcp", peerAddr)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		fmt.Println("connected")
+		defer conn.Close()
+
+		buf := bytes.Buffer{}
+
+		buf.WriteByte(19)
+		buf.WriteString("BitTorrent protocol")
+		buf.Write([]byte{0, 0, 0, 0, 0, 0, 0, 0})
+		buf.Write(hash)
+		buf.WriteString("00112233445566778899")
+
+		fmt.Println("sending handshake")
+		_, err = conn.Write(buf.Bytes())
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		resBuf := bytes.Buffer{}
+		fmt.Println("waiting response")
+		n, err := resBuf.ReadFrom(conn)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		res := resBuf.Bytes()
+		fmt.Println("bytes: ", n)
+		peerID := res[n-20 : n]
+		fmt.Printf("Peer ID: %x\n", peerID)
+
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
