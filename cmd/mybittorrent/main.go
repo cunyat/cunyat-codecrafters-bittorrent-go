@@ -10,10 +10,10 @@ import (
 )
 
 type TorrentFileInfo struct {
-	Length      int         `bencode:"length"`
-	Name        string      `bencode:"name"`
-	PieceLength int         `bencode:"piece length"`
-	Pieces      interface{} `bencode:"pieces"`
+	Length      int    `bencode:"length"`
+	Name        string `bencode:"name"`
+	PieceLength int    `bencode:"piece length"`
+	Pieces      string `bencode:"pieces"`
 }
 
 type TorrentFile struct {
@@ -68,7 +68,15 @@ func main() {
 			fmt.Println(err)
 			os.Exit(1)
 		}
-		fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %x\n", torrent.Announce, torrent.Info.Length, hash)
+
+		fmt.Printf("Tracker URL: %s", torrent.Announce)
+		fmt.Printf("Length: %d\n", torrent.Info.Length)
+		fmt.Printf("Info Hash: %x\n", hash)
+		fmt.Printf("Piece Length: %d\n", torrent.Info.PieceLength)
+		fmt.Println("Pieces Hashes:")
+		for i := 0; i < len(torrent.Info.Pieces); i += 20 {
+			fmt.Printf("%x\n", torrent.Info.Pieces[i:i+20])
+		}
 
 	default:
 		fmt.Println("Unknown command: " + command)
